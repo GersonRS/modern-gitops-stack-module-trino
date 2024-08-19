@@ -17,13 +17,13 @@ The following requirements are needed by this module:
 
 The following providers are used by this module:
 
-- [[provider_random]] <<provider_random,random>> (>= 3)
-
 - [[provider_utils]] <<provider_utils,utils>> (>= 1)
 
 - [[provider_argocd]] <<provider_argocd,argocd>> (>= 5)
 
 - [[provider_null]] <<provider_null,null>> (>= 3)
+
+- [[provider_kubernetes]] <<provider_kubernetes,kubernetes>>
 
 === Resources
 
@@ -33,7 +33,7 @@ The following resources are used by this module:
 - https://registry.terraform.io/providers/oboukili/argocd/latest/docs/resources/project[argocd_project.this] (resource)
 - https://registry.terraform.io/providers/hashicorp/null/latest/docs/resources/resource[null_resource.dependencies] (resource)
 - https://registry.terraform.io/providers/hashicorp/null/latest/docs/resources/resource[null_resource.this] (resource)
-- https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/password[random_password.minio_root_secretkey] (resource)
+- https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/data-sources/service[kubernetes_service.trino] (data source)
 - https://registry.terraform.io/providers/cloudposse/utils/latest/docs/data-sources/deep_merge_yaml[utils_deep_merge_yaml.values] (data source)
 
 === Required Inputs
@@ -49,6 +49,42 @@ Type: `string`
 ==== [[input_base_domain]] <<input_base_domain,base_domain>>
 
 Description: Base domain of the cluster. Value used for the ingress' URL of the application.
+
+Type: `string`
+
+==== [[input_storage]] <<input_storage,storage>>
+
+Description: MinIO S3 bucket configuration values for the bucket where the archived metrics will be stored.
+
+Type:
+[source,hcl]
+----
+object({
+    bucket_name       = string
+    endpoint          = string
+    access_key        = string
+    secret_access_key = string
+  })
+----
+
+==== [[input_database]] <<input_database,database>>
+
+Description: database configuration
+
+Type:
+[source,hcl]
+----
+object({
+    user     = string
+    password = string
+    database = string
+    service  = string
+  })
+----
+
+==== [[input_pinot_dns]] <<input_pinot_dns,pinot_dns>>
+
+Description: pinot dns
 
 Type: `string`
 
@@ -94,7 +130,15 @@ Description: Override of target revision of the application chart.
 
 Type: `string`
 
-Default: `"v2.4.0"`
+Default: `"v1.0.0"`
+
+==== [[input_namespace]] <<input_namespace,namespace>>
+
+Description: Namespace where the applications's Kubernetes resources should be created. Namespace will be created in case it doesn't exist.
+
+Type: `string`
+
+Default: `"processing"`
 
 ==== [[input_cluster_issuer]] <<input_cluster_issuer,cluster_issuer>>
 
@@ -152,58 +196,6 @@ Type: `map(string)`
 
 Default: `{}`
 
-==== [[input_config_minio]] <<input_config_minio,config_minio>>
-
-Description: Variable to create buckets and required users and policies.
-
-Type:
-[source,hcl]
-----
-object({
-    policies = optional(list(object({
-      name = string
-      statements = list(object({
-        resources = list(string)
-        actions   = list(string)
-      }))
-    })), [])
-    users = optional(list(object({
-      accessKey = string
-      secretKey = string
-      policy    = string
-    })), [])
-    buckets = optional(list(object({
-      name          = string
-      policy        = optional(string, "none")
-      purge         = optional(bool, false)
-      versioning    = optional(bool, false)
-      objectlocking = optional(bool, false)
-    })), [])
-  })
-----
-
-Default: `{}`
-
-==== [[input_oidc]] <<input_oidc,oidc>>
-
-Description: OIDC configuration to access the MinIO web interface.
-
-Type:
-[source,hcl]
-----
-object({
-    issuer_url              = string
-    oauth_url               = string
-    token_url               = string
-    api_url                 = string
-    client_id               = string
-    client_secret           = string
-    oauth2_proxy_extra_args = optional(list(string), [])
-  })
-----
-
-Default: `null`
-
 === Outputs
 
 The following outputs are exported:
@@ -212,13 +204,17 @@ The following outputs are exported:
 
 Description: ID to pass other modules in order to refer to this module as a dependency.
 
+==== [[output_cluster_dns]] <<output_cluster_dns,cluster_dns>>
+
+Description: trino cluster dns
+
+==== [[output_cluster_ip]] <<output_cluster_ip,cluster_ip>>
+
+Description: trino cluster ip internal
+
 ==== [[output_endpoint]] <<output_endpoint,endpoint>>
 
-Description: MinIO endpoint where the buckets are available.
-
-==== [[output_minio_root_user_credentials]] <<output_minio_root_user_credentials,minio_root_user_credentials>>
-
-Description: The MinIO root user password.
+Description: trino endpoint external
 // END_TF_DOCS
 
 === Reference in table format
@@ -243,10 +239,10 @@ Description: The MinIO root user password.
 [cols="a,a",options="header,autowidth"]
 |===
 |Name |Version
-|[[provider_random]] <<provider_random,random>> |>= 3
 |[[provider_utils]] <<provider_utils,utils>> |>= 1
 |[[provider_argocd]] <<provider_argocd,argocd>> |>= 5
 |[[provider_null]] <<provider_null,null>> |>= 3
+|[[provider_kubernetes]] <<provider_kubernetes,kubernetes>> |n/a
 |===
 
 = Resources
@@ -258,7 +254,7 @@ Description: The MinIO root user password.
 |https://registry.terraform.io/providers/oboukili/argocd/latest/docs/resources/project[argocd_project.this] |resource
 |https://registry.terraform.io/providers/hashicorp/null/latest/docs/resources/resource[null_resource.dependencies] |resource
 |https://registry.terraform.io/providers/hashicorp/null/latest/docs/resources/resource[null_resource.this] |resource
-|https://registry.terraform.io/providers/hashicorp/random/latest/docs/resources/password[random_password.minio_root_secretkey] |resource
+|https://registry.terraform.io/providers/hashicorp/kubernetes/latest/docs/data-sources/service[kubernetes_service.trino] |data source
 |https://registry.terraform.io/providers/cloudposse/utils/latest/docs/data-sources/deep_merge_yaml[utils_deep_merge_yaml.values] |data source
 |===
 
@@ -306,7 +302,13 @@ Description: The MinIO root user password.
 |[[input_target_revision]] <<input_target_revision,target_revision>>
 |Override of target revision of the application chart.
 |`string`
-|`"v2.4.0"`
+|`"v1.0.0"`
+|no
+
+|[[input_namespace]] <<input_namespace,namespace>>
+|Namespace where the applications's Kubernetes resources should be created. Namespace will be created in case it doesn't exist.
+|`string`
+|`"processing"`
 |no
 
 |[[input_cluster_issuer]] <<input_cluster_issuer,cluster_issuer>>
@@ -359,57 +361,45 @@ object({
 |`{}`
 |no
 
-|[[input_config_minio]] <<input_config_minio,config_minio>>
-|Variable to create buckets and required users and policies.
+|[[input_storage]] <<input_storage,storage>>
+|MinIO S3 bucket configuration values for the bucket where the archived metrics will be stored.
 |
 
 [source]
 ----
 object({
-    policies = optional(list(object({
-      name = string
-      statements = list(object({
-        resources = list(string)
-        actions   = list(string)
-      }))
-    })), [])
-    users = optional(list(object({
-      accessKey = string
-      secretKey = string
-      policy    = string
-    })), [])
-    buckets = optional(list(object({
-      name          = string
-      policy        = optional(string, "none")
-      purge         = optional(bool, false)
-      versioning    = optional(bool, false)
-      objectlocking = optional(bool, false)
-    })), [])
+    bucket_name       = string
+    endpoint          = string
+    access_key        = string
+    secret_access_key = string
   })
 ----
 
-|`{}`
-|no
+|n/a
+|yes
 
-|[[input_oidc]] <<input_oidc,oidc>>
-|OIDC configuration to access the MinIO web interface.
+|[[input_database]] <<input_database,database>>
+|database configuration
 |
 
 [source]
 ----
 object({
-    issuer_url              = string
-    oauth_url               = string
-    token_url               = string
-    api_url                 = string
-    client_id               = string
-    client_secret           = string
-    oauth2_proxy_extra_args = optional(list(string), [])
+    user     = string
+    password = string
+    database = string
+    service  = string
   })
 ----
 
-|`null`
-|no
+|n/a
+|yes
+
+|[[input_pinot_dns]] <<input_pinot_dns,pinot_dns>>
+|pinot dns
+|`string`
+|n/a
+|yes
 
 |===
 
@@ -419,8 +409,9 @@ object({
 |===
 |Name |Description
 |[[output_id]] <<output_id,id>> |ID to pass other modules in order to refer to this module as a dependency.
-|[[output_endpoint]] <<output_endpoint,endpoint>> |MinIO endpoint where the buckets are available.
-|[[output_minio_root_user_credentials]] <<output_minio_root_user_credentials,minio_root_user_credentials>> |The MinIO root user password.
+|[[output_cluster_dns]] <<output_cluster_dns,cluster_dns>> |trino cluster dns
+|[[output_cluster_ip]] <<output_cluster_ip,cluster_ip>> |trino cluster ip internal
+|[[output_endpoint]] <<output_endpoint,endpoint>> |trino endpoint external
 |===
 // END_TF_TABLES
 ====
